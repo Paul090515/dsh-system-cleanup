@@ -18,23 +18,35 @@
 
 ## 📦 安装
 
-skill 放在 DSH 的**用户级全局目录** `~/.dsh/skills/` 下即可被所有项目/会话识别。
+本仓库同时支持「插件安装」与「skill 克隆安装」，任选其一即可。
 
-**方式一：git clone**
+**方式一（推荐）：`dsh plugin add` 一键安装**
+
+```bash
+# 从 GitHub 安装（会被 DSH 内置的 find_dsh_plugin 搜索发现）
+dsh plugin --profile web add github:Paul090515/dsh-system-cleanup
+
+# 或从 npm 安装（若已发布到 npm）
+dsh plugin --profile web add dsh-system-cleanup
+```
+
+安装后重启 `dsh web`，对它说「清理一下」即可。
+
+**方式二：git clone 到 skill 目录**
 
 ```bash
 mkdir -p ~/.dsh/skills
 git clone https://github.com/Paul090515/dsh-system-cleanup.git ~/.dsh/skills/system-cleanup
 ```
 
-**方式二：手动复制**
+**方式三：手动复制**
 
 ```bash
 mkdir -p ~/.dsh/skills/system-cleanup
 cp -R SKILL.md scripts references ~/.dsh/skills/system-cleanup/
 ```
 
-> 注意：目标目录名必须与 skill 名一致，即 `system-cleanup`（frontmatter 中的 `name` 字段）。
+> 注意：方式二/三（克隆/复制安装）时，目标目录名必须与 skill 名一致，即 `system-cleanup`（frontmatter 中的 `name` 字段）。
 
 ## 🚀 使用
 
