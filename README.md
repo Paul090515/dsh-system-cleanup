@@ -70,15 +70,17 @@ powershell -ExecutionPolicy Bypass -File ~/.dsh/skills/system-cleanup/scripts/cl
 ### 定时自动清理（可选）
 
 ```bash
-# macOS / Linux：安装每周日 03:00 自动清理
+# macOS / Linux：安装每周日 03:00 dry-run 任务
 bash ~/.dsh/skills/system-cleanup/scripts/schedule.sh --install
 bash ~/.dsh/skills/system-cleanup/scripts/schedule.sh --status
 bash ~/.dsh/skills/system-cleanup/scripts/schedule.sh --uninstall
 ```
 
 ```powershell
-# Windows：安装任务计划
+# Windows：安装 dry-run 任务计划
 powershell -ExecutionPolicy Bypass -File ~/.dsh/skills/system-cleanup/scripts/schedule.ps1 -Install
+
+# 确认需要无人值守清理后，显式加入 --apply / -Apply
 ```
 
 ## 🛡️ 安全保证
