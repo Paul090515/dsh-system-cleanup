@@ -5,7 +5,7 @@
 # 安全设计（保守模式）：
 #   1. 白名单制：只清理下方「已知安全」目录，绝不碰文档/下载/桌面/项目/主目录根。
 #   2. Dry-run 默认：默认只「报告将清理什么 + 可释放空间」，不删除；必须显式 --apply。
-#   3. 可恢复删除：默认移入废纸篓/回收站，不永久删除（rm -rf 仅在 --no-trash 时允许）。
+#   3. 可恢复删除：只移入废纸篓/回收站，永不永久删除。
 #   4. 年龄过滤：默认只处理 --min-age-days（默认 7）天前未修改的条目。
 #   5. 使用中检测：默认用 lsof（如有）跳过被进程打开的文件。
 #
@@ -20,20 +20,18 @@ set -u
 
 # --------------------------- 参数解析 ---------------------------
 APPLY=0
-NO_TRASH=0
 MIN_AGE_DAYS=7
 CATEGORIES=""      # 显式指定类别（空=默认开）
 WITH=""            # 额外启用的默认关闭类别
 VERBOSE=0
 
 usage() {
-  echo "用法: $0 [--apply] [--min-age-days N] [--category a,b,c] [--with a,b] [--no-trash] [--verbose]"
+  echo "用法: $0 [--apply] [--min-age-days N] [--category a,b,c] [--with a,b] [--verbose]"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply)        APPLY=1 ;;
-    --no-trash)     NO_TRASH=1 ;;
     --min-age-days) MIN_AGE_DAYS="$2"; shift ;;
     --category)     CATEGORIES="$2"; shift ;;
     --with)         WITH="$2"; shift ;;
@@ -46,7 +44,7 @@ done
 
 # 年龄阈值必须为正整数
 case "$MIN_AGE_DAYS" in
-  ''|*[!0-9]*) echo "错误: --min-age-days 必须为正整数" >&2; exit 2 ;;
+  ''|*[!0-9]*|0) echo "错误: --min-age-days 必须为正整数" >&2; exit 2 ;;
 esac
 
 # --------------------------- 基础工具 ---------------------------
@@ -117,18 +115,19 @@ is_protected() {
 trash_path() {
   local p="$1"
   [ -e "$p" ] || [ -L "$p" ] || return 1
-  if [ "$NO_TRASH" = "1" ]; then
-    rm -rf "$p" && return 0 || return 2
-  fi
   case "$OS" in
     darwin)
       if has trash; then
         trash -s "$p" >/dev/null 2>&1 && return 0
       fi
-      if has osascript; then
-        osascript -e "tell application \"Finder\" to delete POSIX file \"$p\"" >/dev/null 2>&1 && return 0
+      if [ -d "$HOME/.Trash" ]; then
+        local dest="$HOME/.Trash/$(basename "$p")" i=1
+        while [ -e "$dest" ] || [ -L "$dest" ]; do
+          dest="$HOME/.Trash/$(basename "$p").$i"; i=$((i+1))
+        done
+        mv "$p" "$dest" >/dev/null 2>&1 && return 0
       fi
-      mv "$p" "$HOME/.Trash/$(basename "$p").$$" >/dev/null 2>&1 && return 0 || return 2
+      return 2
       ;;
     linux)
       if has trash-put; then
@@ -227,12 +226,7 @@ run_dev() {
     d="$HOME/Library/Caches/Homebrew"
     [ -d "$d" ] && older_entries "$d" | process_entries "dev: Homebrew cache"
   fi
-  if has npm;    then [ "$APPLY" = "1" ] && npm cache clean --force >/dev/null 2>&1;      log "dev: npm cache clean"; fi
-  if has pip3;   then [ "$APPLY" = "1" ] && pip3 cache purge >/dev/null 2>&1;            log "dev: pip3 cache purge"; fi
-  if has pip;    then [ "$APPLY" = "1" ] && pip cache purge >/dev/null 2>&1;             log "dev: pip cache purge"; fi
-  if has yarn;   then [ "$APPLY" = "1" ] && yarn cache clean >/dev/null 2>&1;            log "dev: yarn cache clean"; fi
-  if has pnpm;   then [ "$APPLY" = "1" ] && pnpm store prune >/dev/null 2>&1;            log "dev: pnpm store prune"; fi
-  if has brew;   then [ "$APPLY" = "1" ] && brew cleanup --prune=all >/dev/null 2>&1;    log "dev: brew cleanup"; fi
+  # 只处理下面列出的目录；不要调用工具自带 purge/clean 命令绕过年龄过滤。
   d="${CARGO_HOME:-$HOME/.cargo}/registry/cache"
   [ -d "$d" ] && older_entries "$d" | process_entries "dev: cargo cache"
   if has go; then
@@ -252,9 +246,7 @@ run_deriveddata() {
   fi
 }
 run_trash() {
-  local d
-  if [ "$OS" = "darwin" ]; then d="$HOME/.Trash"; else d="${XDG_DATA_HOME:-$HOME/.local/share}/Trash/files"; fi
-  [ -d "$d" ] && older_entries "$d" | process_entries "trash"
+  echo '  [跳过] 废纸篓不支持本脚本的逐项可恢复清理'
 }
 
 # --------------------------- 类别调度 ---------------------------
@@ -262,9 +254,8 @@ DEFAULT_ON="temp,usercache,logs,dev"
 if [ -n "$CATEGORIES" ]; then SEL="$CATEGORIES"; else SEL="$DEFAULT_ON"; fi
 [ -n "$WITH" ] && SEL="$SEL,$WITH"
 
-log "================ 运行开始 (os=$OS apply=$APPLY no-trash=$NO_TRASH min-age=$MIN_AGE_DAYS categories=$SEL) ================"
-if   [ "$APPLY" = "1" ] && [ "$NO_TRASH" = "0" ]; then mode="真正清理（移入废纸篓，可恢复）";
-elif [ "$APPLY" = "1" ]; then mode="真正清理（永久删除 --no-trash，慎用）";
+log "================ 运行开始 (os=$OS apply=$APPLY min-age=$MIN_AGE_DAYS categories=$SEL) ================"
+if [ "$APPLY" = "1" ]; then mode="真正清理（移入废纸篓，可恢复）";
 else mode="DRY-RUN（只报告，不删除）"; fi
 echo "运行模式：$mode"
 echo ""

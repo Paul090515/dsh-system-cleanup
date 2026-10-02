@@ -3,7 +3,7 @@
 # DSH system-cleanup — 定时任务安装/卸载（macOS launchd + Linux cron）
 #
 # 安装一个「每周（默认周日 03:00）自动清理」的保守任务：
-#   运行 cleanup.sh --apply（移入废纸篓 + 年龄过滤），日志写入 logs/cleanup.log。
+#   默认运行 cleanup.sh（dry-run）；只有显式 --apply 才会无人值守清理。
 #
 # 用法：
 #   schedule.sh --install                    # 安装（每周日 03:00）
@@ -24,6 +24,7 @@ mkdir -p "$LOG_DIR" 2>/dev/null || true
 ACTION=""
 INTERVAL="weekly"   # weekly | daily
 MIN_AGE_DAYS=7
+APPLY=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -32,11 +33,16 @@ while [ $# -gt 0 ]; do
     --status)    ACTION=status ;;
     --interval)  INTERVAL="$2"; shift ;;
     --min-age-days) MIN_AGE_DAYS="$2"; shift ;;
+    --apply) APPLY=1 ;;
     --help|-h)   sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
   shift
 done
+
+case "$MIN_AGE_DAYS" in
+  ''|*[!0-9]*|0) echo "错误: --min-age-days 必须为正整数" >&2; exit 2 ;;
+esac
 
 [ -n "$ACTION" ] || { echo "需要 --install / --uninstall / --status 之一" >&2; exit 2; }
 
@@ -71,7 +77,7 @@ plist_content() {
   <array>
     <string>/bin/bash</string>
     <string>$CLEANUP</string>
-    <string>--apply</string>
+    $( [ "$APPLY" = "1" ] && printf '<string>--apply</string>\n' )
     <string>--min-age-days</string>
     <string>$MIN_AGE_DAYS</string>
   </array>
@@ -115,9 +121,11 @@ CRON_MARK="# dsh-system-cleanup"
 
 linux_cron_line() {
   local schedule
+  local apply_arg=""
   if [ "$INTERVAL" = "daily" ]; then schedule="0 3 * * *"; else schedule="0 3 * * 0"; fi
-  printf '%s %s /bin/bash %s --apply --min-age-days %s >> %s 2>&1\n' \
-    "$schedule" "$CRON_MARK" "$CLEANUP" "$MIN_AGE_DAYS" "$LOG_FILE"
+  [ "$APPLY" = "1" ] && apply_arg=" --apply"
+  printf '%s /bin/bash "%s"%s --min-age-days %s >> "%s" 2>&1 %s\n' \
+    "$schedule" "$CLEANUP" "$apply_arg" "$MIN_AGE_DAYS" "$LOG_FILE" "$CRON_MARK"
 }
 
 linux_install() {

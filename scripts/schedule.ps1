@@ -2,7 +2,7 @@
 # DSH system-cleanup — 定时任务安装/卸载（Windows 任务计划程序 schtasks）
 #
 # 安装一个「每周（默认周日 03:00）自动清理」的保守任务：
-#   运行 cleanup.ps1 -Apply（送入回收站 + 年龄过滤），日志写入 logs\cleanup.log。
+#   默认运行 cleanup.ps1（dry-run）；只有显式 -Apply 才会无人值守清理。
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File schedule.ps1 -Install
@@ -14,8 +14,10 @@ param(
   [switch]$Install,
   [switch]$Uninstall,
   [switch]$Status,
+  [switch]$Apply,
   [ValidateSet('weekly','daily')]
   [string]$Interval = 'weekly',
+  [ValidateRange(1, 36500)]
   [int]$MinAgeDays = 7
 )
 
@@ -27,7 +29,8 @@ $logDir = Join-Path $skillDir 'logs'
 try { New-Item -ItemType Directory -Force -Path $logDir | Out-Null } catch {}
 
 function Build-Command {
-  return "powershell -NoProfile -ExecutionPolicy Bypass -File `"$cleanup`" -Apply -MinAgeDays $MinAgeDays"
+  $applyArg = if ($Apply) { ' -Apply' } else { '' }
+  return "powershell -NoProfile -ExecutionPolicy Bypass -File `"$cleanup`"$applyArg -MinAgeDays $MinAgeDays"
 }
 
 function Invoke-Install {

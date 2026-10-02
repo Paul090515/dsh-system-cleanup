@@ -4,7 +4,7 @@
 # 安全设计（保守模式，与 cleanup.sh 对齐）：
 #   1. 白名单制：只清理下方「已知安全」目录，绝不碰 文档/下载/桌面/用户主目录根。
 #   2. Dry-run 默认：默认只报告，不删除；必须显式 -Apply。
-#   3. 可恢复删除：默认送入回收站（可还原），不永久删除（-NoTrash 慎用）。
+#   3. 可恢复删除：只送入回收站（可还原），永不永久删除。
 #   4. 年龄过滤：默认只处理 -MinAgeDays（默认 7）天前未修改的条目。
 #   5. 不请求管理员权限：需要管理员权限的目录（C:\Windows\Temp、Windows Update 缓存等）一律跳过。
 #
@@ -16,7 +16,7 @@
 # =============================================================================
 param(
   [switch]$Apply,
-  [switch]$NoTrash,
+  [ValidateRange(1, 36500)]
   [int]$MinAgeDays = 7,
   [string]$Category = "",
   [string]$With = "",
@@ -104,12 +104,7 @@ function Process-Entries([string]$label, [array]$items) {
     $size = Get-Size $p
     $total += $size
     if ($Apply) {
-      if ($NoTrash) {
-        $ok = $false
-        try { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop; $ok = $true } catch { $ok = $false }
-      } else {
-        $ok = Move-ToRecycleBin $p
-      }
+      $ok = Move-ToRecycleBin $p
       if ($ok) { $count++; Write-Host "  [已清理] $p ($(Format-Bytes $size))" }
       else { $skipped++; Write-Host "  [跳过-失败] $p" }
     } else {
@@ -173,14 +168,7 @@ function Run-Dev {
   if (Test-Path -LiteralPath $d) { Process-Entries "dev: cargo cache" (Get-OldEntries $d) }
 }
 function Run-Trash {
-  # 清空回收站（不可恢复，默认关闭）
-  if ($Apply) {
-    Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-    Write-Host '  [已清理] 回收站（Clear-RecycleBin，不可恢复）'
-    Log 'trash: Clear-RecycleBin'
-  } else {
-    Write-Host '  [将清理] 回收站（Clear-RecycleBin，不可恢复）'
-  }
+  Write-Host '  [跳过] Windows 回收站不支持本脚本的逐项可恢复清理'
 }
 
 # --------------------------- 调度 ---------------------------
@@ -188,11 +176,10 @@ $defaultOn = 'temp,usercache,logs,dev'
 if ([string]::IsNullOrWhiteSpace($Category)) { $sel = $defaultOn } else { $sel = $Category }
 if (-not [string]::IsNullOrWhiteSpace($With)) { $sel += ',' + $With }
 
-if ($Apply -and -not $NoTrash) { $mode = '真正清理（送入回收站，可恢复）' }
-elseif ($Apply) { $mode = '真正清理（永久删除 -NoTrash，慎用）' }
+if ($Apply) { $mode = '真正清理（送入回收站，可恢复）' }
 else { $mode = 'DRY-RUN（只报告，不删除）' }
 
-Log "================ 运行开始 (apply=$Apply noTrash=$NoTrash minAge=$MinAgeDays categories=$sel) ================"
+Log "================ 运行开始 (apply=$Apply minAge=$MinAgeDays categories=$sel) ================"
 Write-Host "运行模式：$mode"
 Write-Host ''
 
