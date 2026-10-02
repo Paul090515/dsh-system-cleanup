@@ -19,7 +19,7 @@ metadata:
    - 任何项目源码目录、`.git`、`.dsh` 会话目录、当前工作目录
    - 主目录根（`~`、`$HOME`）下的未知内容
 2. **默认 dry-run**：先跑一遍「只报告 + 计算可释放空间」，把报告给用户看，**除非用户明确说「执行/清理/删掉/apply」否则不要真正删除**。
-3. **可恢复删除**：真正清理时默认「移入废纸篓/回收站」，不永久删除（`rm -rf` 禁止）。
+3. **可恢复删除**：真正清理时只「移入废纸篓/回收站」，脚本不提供永久删除选项。
 4. **年龄过滤**：默认只处理 `--min-age-days 7` 天以上未修改的条目，避开正在使用的文件。
 5. **使用中检测**：默认用 `lsof`（macOS/Linux）跳过被进程打开的文件。
 
@@ -65,17 +65,19 @@ powershell -ExecutionPolicy Bypass -File "scripts/cleanup.ps1" -Apply
 | `temp` | ✅ 开 | 系统临时目录（macOS: `/tmp`、`/var/tmp`；Linux: `/tmp`、`/var/tmp`）中超过年龄阈值的条目 |
 | `usercache` | ✅ 开 | macOS `~/Library/Caches`；Linux `~/.cache` 下各应用缓存（按条目级、超过年龄阈值） |
 | `logs` | ✅ 开 | macOS `~/Library/Logs`；Linux `~/.cache` 下日志；仅超过年龄阈值的 `.log` 文件/目录 |
-| `dev` | ✅ 开 | 开发工具缓存：npm / pip / yarn / pnpm / Homebrew / cargo / go / gradle（优先用工具自带安全清理命令） |
+| `dev` | ✅ 开 | macOS/Linux：Homebrew（仅 macOS）、cargo、go、gradle 的白名单缓存目录，按年龄过滤；Windows 目录详见安全说明 |
 | `deriveddata` | ⭕ 关 | Xcode DerivedData、iOS 模拟器缓存（清理后首次构建会变慢，需 `--with deriveddata` 显式开启） |
-| `trash` | ⭕ 关 | 清空废纸篓/回收站（不可恢复，需 `--with trash` 显式开启） |
+| `trash` | ⭕ 关 | 跳过废纸篓/回收站，不执行不可恢复的清空 |
 
 > 详细白名单与每个目录的安全说明见 `references/safety-and-scope.md`。
 
 ## 定时任务（可选，用户要求「定时自动清理」时）
 
-安装每周自动清理（保守模式：`--apply` 移入废纸篓 + 年龄过滤）：
+安装每周任务（默认只生成 dry-run 报告）：
 - macOS / Linux：`bash "scripts/schedule.sh" --install`
 - Windows：`powershell -ExecutionPolicy Bypass -File "scripts/schedule.ps1" -Install`
+
+确认需要无人值守清理后，再显式加入 `--apply` / `-Apply`。
 
 查看/卸载：
 - macOS / Linux：`bash "scripts/schedule.sh" --status` / `--uninstall`
@@ -92,7 +94,6 @@ powershell -ExecutionPolicy Bypass -File "scripts/cleanup.ps1" -Apply
 | `--min-age-days N` / `-MinAgeDays N` | 年龄阈值，默认 7 天 |
 | `--category a,b,c` / `-Category a,b,c` | 只跑指定类别 |
 | `--with a,b` / `-With a,b` | 额外启用默认关闭的类别 |
-| `--no-trash` | 永久删除而非移入废纸篓（⚠️ 慎用，默认禁止） |
 
 ## 异常处理
 
