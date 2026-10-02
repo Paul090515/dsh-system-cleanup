@@ -1,9 +1,12 @@
 {
   "name": "dsh-system-cleanup",
   "description": "DSH skill: conservative system cache & junk cleaner for macOS/Linux/Windows (dry-run first, recoverable trash, whitelist-only).",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "main": "lib/index.js",
+  "scripts": {
+    "check": "bash scripts/check.sh"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
