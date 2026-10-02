@@ -6,7 +6,7 @@
 
 1. **白名单制**：只清理本文档列出的目录。任何未列出的路径一律不碰。
 2. **默认 dry-run**：先报告「将清理什么 + 可释放空间」，用户确认后才真正清理。
-3. **可恢复删除**：默认移入废纸篓/回收站（macOS `trash`、Windows 回收站、Linux `trash-cli`/`gio`/freedesktop Trash），绝不默认 `rm -rf`。
+3. **可恢复删除**：只移入废纸篓/回收站（macOS `trash`、Windows 回收站、Linux `trash-cli`/`gio`/freedesktop Trash），脚本不提供永久删除选项。
 4. **年龄过滤**：默认只处理 7 天前（`--min-age-days 7`）未修改的条目，避开正在使用的文件。
 5. **使用中检测**：macOS/Linux 用 `lsof` 跳过被进程打开的文件。
 6. **无安全回退则不删**：当系统上没有可用的「移入废纸篓」工具且无法安全回退时，**跳过实际删除、只报告**，绝不降级为永久删除。
@@ -28,9 +28,9 @@
 | temp | `/tmp`、`/var/tmp` | 系统临时目录；条目级、超龄 |
 | usercache | `~/Library/Caches` | 各应用缓存（含浏览器缓存，如 `~/Library/Caches/Google`、`com.apple.Safari`）；条目级、超龄；书签/密码等不在此目录 |
 | logs | `~/Library/Logs` | 应用日志；超龄 `.log` 文件/目录 |
-| dev | `~/Library/Caches/Homebrew`、npm/pip/yarn/pnpm/brew/cargo/go/gradle 缓存 | 优先用工具自带安全清理命令（`npm cache clean` 等） |
+| dev | `~/Library/Caches/Homebrew`、cargo/go/gradle 缓存 | 仅按目录白名单和年龄过滤处理 |
 | deriveddata（默认关） | `~/Library/Developer/Xcode/DerivedData`、`~/Library/Developer/CoreSimulator/Caches` | 清理后首次构建变慢；需 `--with deriveddata` |
-| trash（默认关） | `~/.Trash` | 清空废纸篓，不可恢复；需 `--with trash` |
+| trash（默认关） | `~/.Trash` | 跳过；不执行不可恢复的清空 |
 
 ### Linux
 
@@ -39,8 +39,8 @@
 | temp | `/tmp`、`/var/tmp` | 条目级、超龄 |
 | usercache | `~/.cache`（或 `$XDG_CACHE_HOME`） | 各应用缓存；条目级、超龄 |
 | logs | `~/.cache` 下的 `.log*` 文件 | 超龄日志文件 |
-| dev | npm/pip/yarn/pnpm/cargo/go/gradle 缓存 | 优先用工具自带安全清理命令 |
-| trash（默认关） | `~/.local/share/Trash/files`（或 `$XDG_DATA_HOME`） | 清空回收站；需 `--with trash` |
+| dev | cargo/go/gradle 缓存 | 仅按目录白名单和年龄过滤处理 |
+| trash（默认关） | `~/.local/share/Trash/files`（或 `$XDG_DATA_HOME`） | 跳过；不重复移入回收站或清空 |
 
 ### Windows（win32）
 
@@ -50,7 +50,7 @@
 | usercache | `%LOCALAPPDATA%\Cache`、`INetCache`、Chrome/Edge 缓存、npm/pip/yarn 缓存 | 条目级、超龄 |
 | logs | `%LOCALAPPDATA%\Logs`、`%APPDATA%\Logs` | 超龄 `.log` 文件 |
 | dev | npm-cache、pip Cache、Yarn Cache、gradle/cargo 缓存 | 条目级、超龄 |
-| trash（默认关） | 回收站（`Clear-RecycleBin`） | 需 `-With trash` |
+| trash（默认关） | Windows 回收站 | 本脚本不执行不可恢复的整站清空 |
 
 > Windows 下需要管理员权限的目录（`C:\Windows\Temp`、Windows Update 缓存、`C:\Windows\SoftwareDistribution` 等）**一律跳过**，不请求提权。
 
@@ -68,6 +68,6 @@
 
 ## 恢复方式
 
-- macOS：废纸篓（Dock 的 Trash）→ 右键「放回原处」。
+- macOS：废纸篓（Dock 的 Trash）中还原；直接移动的回退方式需手动移回原路径。
 - Linux：`trash-cli` 的 `trash-restore`，或从 `~/.local/share/Trash/files` 手动移回。
 - Windows：回收站 → 右键「还原」。
