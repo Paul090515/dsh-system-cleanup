@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mac 安全清理"
+  short_description: "旧诊断日志逐文件移入废纸篓并增量查重，记录恢复路径与真实释放空间"
+  default_prompt: "使用 $system-cleanup 按已有授权检查旧缓存和重复文件，逐文件核验，只将安全条目移入废纸篓。"

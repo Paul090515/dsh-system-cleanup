@@ -12,3 +12,12 @@ node_modules/
 .idea/
 .vscode/
 *.swp
+
+# Local-only scan/recovery metadata must never be published.
+work/daily-cleanup/
+plan-*.json
+receipt-*.jsonl
+duplicates-state.json
+duplicates-report.json
+__pycache__/
+*.py[cod]

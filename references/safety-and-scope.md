@@ -1,73 +1,39 @@
-# 安全规则与清理白名单
+# 安全范围、记录与恢复
 
-本文档是 `system-cleanup` skill 的权威安全说明。执行清理前必须对照本文档确认目标目录在「已知安全」白名单内。
+## 固定范围
 
-## 核心安全原则
+本版本只在 macOS 运行。使用当前用户主目录推导路径，不硬编码作者用户名，不提供外部源目录或降低年龄阈值的参数。实际部署仍必须取得该用户对此机器、两个目录和可恢复逐文件移动的授权。
 
-1. **白名单制**：只清理本文档列出的目录。任何未列出的路径一律不碰。
-2. **默认 dry-run**：先报告「将清理什么 + 可释放空间」，用户确认后才真正清理。
-3. **可恢复删除**：只移入废纸篓/回收站（macOS `trash`、Windows 回收站、Linux `trash-cli`/`gio`/freedesktop Trash），脚本不提供永久删除选项。
-4. **年龄过滤**：默认只处理 7 天前（`--min-age-days 7`）未修改的条目，避开正在使用的文件。
-5. **使用中检测**：macOS/Linux 用 `lsof` 跳过被进程打开的文件。
-6. **无安全回退则不删**：当系统上没有可用的「移入废纸篓」工具且无法安全回退时，**跳过实际删除、只报告**，绝不降级为永久删除。
+清理范围仅为 `~/Library/Caches` 和 `~/Library/Logs` 内用途明确的文件。实现只识别 Claude、DSH Desktop、WorkBuddy、PaulBot 的列明诊断日志、Codex 按日期存放的 codex-desktop 日志，以及 VSCode/Claude 更新器的列明 stdout/stderr；名称命中后仍要检查 MIME、占用与元数据。结构化日志、普通未知缓存、数据库和其他扩展名不因“旧”就变安全。
 
-## 永久不触碰（绝对黑名单）
+必须同时满足：当前用户、普通文件、单硬链接、非符号链接及非链接祖先、无保护标志、已在本地分配、至少 14 天未修改、可读、父目录可写、非仓库、lsof 完整确认未占用、MIME 为 text/plain。lsof 报错/超时/缺失或 stderr 非空均为不确定，跳过。先查占用，再进行 MIME 内容探测。
 
-- 主目录根 `$HOME` 本身及主目录一级条目（含所有 `.` 开头目录，如 `.dsh`、`.ssh`、`.gitconfig`）
-- `Documents`、`Downloads`、`Desktop`、`OneDrive`（Windows）及其全部子内容
-- 任何项目源码目录、`.git`、当前工作目录
-- 系统关键目录：`/System`、`/Library`（macOS 根级）、`/usr`、`/bin`、`/etc`、`C:\Windows`、`C:\Program Files`
-- 用户自建的任意非白名单目录
+## 清单与逐项执行
 
-## 清理白名单（按平台）
+`inspect` 只生成 `plan-TRANSACTION.json`，包含原路径、唯一废纸篓路径、大小、设备/inode、**字符串形式**的 mtime/ctime 纳秒、用途、时间与跳过项。单有这份清单不等于用户授权。
 
-### macOS（Darwin）
+`trash --manifest PATH --authorized` 要求真实授权已存在。严格校验 manifest 的归属、位置、格式和源/目标范围；执行前重新验证身份与安全条件。只允许同卷 `mv -n`；不复制后删除、不移动目录、不覆盖。废纸篓不可读写或为符号链接时拒绝，不提权。
 
-| 类别 | 路径 | 说明 |
-|---|---|---|
-| temp | `/tmp`、`/var/tmp` | 系统临时目录；条目级、超龄 |
-| usercache | `~/Library/Caches` | 各应用缓存（含浏览器缓存，如 `~/Library/Caches/Google`、`com.apple.Safari`）；条目级、超龄；书签/密码等不在此目录 |
-| logs | `~/Library/Logs` | 应用日志；超龄 `.log` 文件/目录 |
-| dev | `~/Library/Caches/Homebrew`、cargo/go/gradle 缓存 | 仅按目录白名单和年龄过滤处理 |
-| deriveddata（默认关） | `~/Library/Developer/Xcode/DerivedData`、`~/Library/Developer/CoreSimulator/Caches` | 清理后首次构建变慢；需 `--with deriveddata` |
-| trash（默认关） | `~/.Trash` | 跳过；不执行不可恢复的清空 |
+每个移动前先持久化 planned 记录，移动后持久化核验结果到 `receipt-TRANSACTION.jsonl`。结果以 moved_verified / skipped / rolled_back / uncertain 区分。路径改名不能原子锁住其他应用：若移动边界出现文件替换，只有原路径仍空、目标为本用户普通单链接文件且父目录身份稳定时，才先记录恢复意图并以不覆盖方式回滚本次移动；不满足条件就保留恢复路径并报告 uncertain。回滚或无法核验后均停止后续项、返回非零并通知；不计为清理成功。重复执行同一交易被拒绝，避免重放和重复统计。中断后先按原 manifest、receipt 及文件身份只读核对，不凭进程退出码声称成功。
 
-### Linux
+记录必须写到用户当前工作区的 `work/daily-cleanup`，不能在 Git 仓库、缓存根或废纸篓内。无可持久化且安全的记录位置时不执行。记录仅保存在本机，绝不作为 Skill 发布内容。
 
-| 类别 | 路径 | 说明 |
-|---|---|---|
-| temp | `/tmp`、`/var/tmp` | 条目级、超龄 |
-| usercache | `~/.cache`（或 `$XDG_CACHE_HOME`） | 各应用缓存；条目级、超龄 |
-| logs | `~/.cache` 下的 `.log*` 文件 | 超龄日志文件 |
-| dev | cargo/go/gradle 缓存 | 仅按目录白名单和年龄过滤处理 |
-| trash（默认关） | `~/.local/share/Trash/files`（或 `$XDG_DATA_HOME`） | 跳过；不重复移入回收站或清空 |
+## 重复文件
 
-### Windows（win32）
+只读检查 Documents、Downloads、Desktop 与两个缓存/日志根；缓存文件同样需已知用途并通过安全检查。排除整个仓库树（包括位于仓库内的扫描根）、依赖、应用包、系统管理库、符号链接祖先和云端占位/未分配文件。不主动下载文件。
 
-| 类别 | 路径 | 说明 |
-|---|---|---|
-| temp | `%TEMP%`、`%LOCALAPPDATA%\Temp` | 条目级、超龄 |
-| usercache | `%LOCALAPPDATA%\Cache`、`INetCache`、Chrome/Edge 缓存、npm/pip/yarn 缓存 | 条目级、超龄 |
-| logs | `%LOCALAPPDATA%\Logs`、`%APPDATA%\Logs` | 超龄 `.log` 文件 |
-| dev | npm-cache、pip Cache、Yarn Cache、gradle/cargo 缓存 | 条目级、超龄 |
-| trash（默认关） | Windows 回收站 | 本脚本不执行不可恢复的整站清空 |
+采用大小分组、完整 SHA-256、前后身份校验与 inode 去重；相同名称、前缀哈希或硬链接不算独立重复。只对不变且仍符合范围的文件复用已保存哈希。保存元数据、游标和已通知重复键，避免每小时重读所有内容。个人资料即使重复也不自动移动，尤其是项目引用的素材副本。
 
-> Windows 下需要管理员权限的目录（`C:\Windows\Temp`、Windows Update 缓存、`C:\Windows\SoftwareDistribution` 等）**一律跳过**，不请求提权。
+默认最小 1 MiB，单批最多 10,000 条目、256 MiB 内容读取和 45 秒；超大文件与未完成哈希均不算已确认重复。报告批次覆盖及跳过/截断原因，不声称整盘完成。
 
-## 年龄过滤的取值
+## 空间与恢复
 
-- `--min-age-days 7`（默认）：只处理 7 天前修改的条目，最保守常用。
-- `--min-age-days 14`：更保守，适合担心清理影响近期工作区的场景。
-- 值越大越安全、释放空间越小；值越小释放越多、但碰到「还在用的文件」概率越高（仍有废纸篓兜底）。
+moved_bytes_to_trash 是已核验移动文件的逻辑大小，不是新释放空间。由于仅允许同卷改名且不清空废纸篓，actual_freed_bytes 固定为 0。重复组多余副本的逻辑总量同样不等于可释放物理磁盘块（可能涉及 APFS 克隆/压缩等）。
 
-## 失败与异常处理
+恢复前逐文件确认当前原路径未被新文件占用；从记录的废纸篓路径手动移回，不覆盖。记录未核验时先只读比较设备、inode、大小、mtime；不自动补删或自动“修复”个人目录。
 
-- 脚本报权限不足 → 逐项说明，绝不自动 `sudo`（除非用户明确要求并说明原因）。
-- 移入废纸篓失败（如文件被锁定）→ 跳过该项并计入「跳过-失败」，不阻断其余清理。
-- dry-run 与 apply 的候选清单完全一致：dry-run 报告里出现的条目，apply 才会处理。
+## 周期与通知
 
-## 恢复方式
+复用用户已授权的同范围自动化，按宿主机制每小时触发，增量检查后仅在实际移动、新重要重复、故障或需用户操作时通知。无变化和未变化的旧阻碍保持安静。此包不安装、更新或删除系统定时任务；发布此包也不修改当前自动化源代码。
 
-- macOS：废纸篓（Dock 的 Trash）中还原；直接移动的回退方式需手动移回原路径。
-- Linux：`trash-cli` 的 `trash-restore`，或从 `~/.local/share/Trash/files` 手动移回。
-- Windows：回收站 → 右键「还原」。
+不永久删除、不清空废纸篓、不用 rm -rf 或包管理器 purge/clean，不绕过权限；不上传本机文件内容、路径、哈希状态或日志。不把本 Skill 当成其他机器的预先授权。

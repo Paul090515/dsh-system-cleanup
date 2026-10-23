@@ -1,102 +1,60 @@
 ---
 name: system-cleanup
-description: 保守地自动清理系统缓存与垃圾文件（macOS/Linux/Windows）。默认 dry-run 只报告不删除；真正清理时默认移入废纸篓/回收站（可恢复），按文件年龄过滤、跳过使用中文件，绝不触碰文档/下载/桌面/项目/主目录根。支持按需调用与安装定时任务。
-whenToUse: 当用户要求清理电脑缓存、垃圾文件、释放磁盘空间、电脑变卡/卡顿，或提到「清理一下」「清缓存」「释放空间」「垃圾文件」「系统缓存」「C 盘满了」等时使用。
+description: 在 macOS 上逐文件安全清理已知用途的旧诊断缓存和日志，并对文档、下载、桌面做只读增量查重。用于清缓存、检查重复文件或按已有授权执行周期清理；不用于删除个人资料或清空废纸篓。
 metadata:
-  platforms: [darwin, linux, win32]
-  safety: conservative
-  default_mode: dry-run
+  platforms: [darwin]
+  safety: exact-manifest-trash-only
 ---
 
-# 系统缓存/垃圾清理（保守·安全）
+# Mac 安全清理与增量查重
 
-目标：在不影响用户工作的前提下，自动清理「已知安全」的缓存与垃圾文件，释放磁盘空间。本 skill 永远优先「安全可恢复」，宁可少清、不可误删。
+只处理当前用户的 `~/Library/Caches` 和 `~/Library/Logs`。文件必须用途明确、为当前用户的普通单链接文件、至少 14 天未修改、未被占用。仅移动逐文件清单中的条目；不按父目录年龄移动目录。
 
-## 安全铁律（每次执行都必须遵守）
+详细范围、恢复方式与输出语义见 [references/safety-and-scope.md](references/safety-and-scope.md)。脚本路径相对本 Skill 目录；运行时工作目录是用户当前工作区，记录放在工作区的 `work/daily-cleanup`，不能放进 Git 仓库或随 Skill 上传。
 
-1. **白名单制**：只清理下面「清理范围」里列出的已知安全目录。绝不删除、绝不触碰：
-   - 用户文档 / `Downloads` / `Desktop` / 桌面文件 / 图片 / 音乐 / 视频
-   - 任何项目源码目录、`.git`、`.dsh` 会话目录、当前工作目录
-   - 主目录根（`~`、`$HOME`）下的未知内容
-2. **默认 dry-run**：先跑一遍「只报告 + 计算可释放空间」，把报告给用户看，**除非用户明确说「执行/清理/删掉/apply」否则不要真正删除**。
-3. **可恢复删除**：真正清理时只「移入废纸篓/回收站」，脚本不提供永久删除选项。
-4. **年龄过滤**：默认只处理 `--min-age-days 7` 天以上未修改的条目，避开正在使用的文件。
-5. **使用中检测**：默认用 `lsof`（macOS/Linux）跳过被进程打开的文件。
+## 执行
 
-## 执行步骤
+1. 明确授权：新环境默认只检查。只有用户明确同意清理，或已存在对象、范围、成本未变化的周期授权，才执行移动；已有授权无需逐项重复确认。Skill 的安装和 CLI 的 `--authorized` 标志本身不构成授权。
+2. 检查已知诊断日志，产生唯一的逐文件 manifest，绝不移动：
 
-> 下方 `scripts/...`、`references/...` 均为相对路径，基于本 skill 的基目录解析（loader 会提供该基目录）。
+   ```bash
+   python3 "/path/to/system-cleanup/scripts/safe_cleanup.py" inspect
+   ```
 
-### 1. 识别系统
-- macOS / Linux → 运行 `scripts/cleanup.sh`
-- Windows → 运行 `scripts/cleanup.ps1`（PowerShell）
+   目前助手只识别已知应用诊断日志和少数更新器 stdout/stderr，普通缓存不能仅凭目录或扩展名判为安全。检查失败或用途不明时保留；不要扩大白名单。
+3. 审核 JSON 中每个 source、文件身份、用途和检查结果。授权覆盖时，仅执行这份准确清单：
 
-### 2. 先 dry-run（默认，必做）
-macOS / Linux：
-```bash
-bash "scripts/cleanup.sh"            # 默认 dry-run，输出将清理清单 + 可释放空间
-bash "scripts/cleanup.sh" --category temp,usercache,logs,dev
-```
-Windows（PowerShell）：
-```powershell
-powershell -ExecutionPolicy Bypass -File "scripts/cleanup.ps1"    # 默认 -DryRun
-```
-把报告结果展示给用户，说明「将清理 X 项、约 Y 空间」，等待确认。
+   ```bash
+   python3 "/path/to/system-cleanup/scripts/safe_cleanup.py" trash --manifest "/absolute/workspace/work/daily-cleanup/plan-TRANSACTION.json" --authorized
+   ```
 
-### 3. 用户确认后真正清理（移入废纸篓，可恢复）
-macOS / Linux：
-```bash
-bash "scripts/cleanup.sh" --apply
-bash "scripts/cleanup.sh" --apply --min-age-days 14          # 更保守：只清 14 天前的
-bash "scripts/cleanup.sh" --apply --with deriveddata,trash   # 额外启用默认关闭的类别
-```
-Windows：
-```powershell
-powershell -ExecutionPolicy Bypass -File "scripts/cleanup.ps1" -Apply
-```
+   移动前重查元数据、14 天年龄、用途、MIME、lsof、父目录及废纸篓。只同卷逐文件移动，目标唯一且不覆盖；事前记录并 fsync，事后逐项核验源身份消失、废纸篓身份/大小/mtime 一致。并发替换时仅安全回滚本次移动，否则保留恢复路径；rolled_back/uncertain 均停止后续项并通知，不能报作成功。无安全可恢复方式、权限不足或检查不完整就跳过，不提权。
+4. 只读增量查重：
 
-### 4. 清理后报告
-从脚本输出中汇总：清理了多少项、释放了多少空间、移入了废纸篓（可恢复）。提醒用户：废纸篓内的文件可随时还原。
+   ```bash
+   python3 "/path/to/system-cleanup/scripts/duplicates_scan.py"
+   ```
 
-## 清理范围（白名单）
+   仅文件大小与完整 SHA-256 都相同才报告。个人资料副本绝不自动移动。跳过仓库、依赖、应用包、系统管理库、符号链接、云端占位文件，不为扫描下载云文件。默认最小 1 MiB、每批最多 10,000 条目、读取哈希最多 256 MiB / 45 秒；超限留待后续批次，不声称扫完整台电脑。
+5. 阅读 manifest、receipt 与重复检查报告；以 verified 结果汇总。区分“移入废纸篓的逻辑大小”与“实际释放的空间”；同卷移入废纸篓实际释放为 0，不清空废纸篓。不把重复组的逻辑冗余量称为可释放磁盘空间。
 
-| 类别 | 默认 | 内容 |
-|---|---|---|
-| `temp` | ✅ 开 | 系统临时目录（macOS: `/tmp`、`/var/tmp`；Linux: `/tmp`、`/var/tmp`）中超过年龄阈值的条目 |
-| `usercache` | ✅ 开 | macOS `~/Library/Caches`；Linux `~/.cache` 下各应用缓存（按条目级、超过年龄阈值） |
-| `logs` | ✅ 开 | macOS `~/Library/Logs`；Linux `~/.cache` 下日志；仅超过年龄阈值的 `.log` 文件/目录 |
-| `dev` | ✅ 开 | macOS/Linux：Homebrew（仅 macOS）、cargo、go、gradle 的白名单缓存目录，按年龄过滤；Windows 目录详见安全说明 |
-| `deriveddata` | ⭕ 关 | Xcode DerivedData、iOS 模拟器缓存（清理后首次构建会变慢，需 `--with deriveddata` 显式开启） |
-| `trash` | ⭕ 关 | 跳过废纸篓/回收站，不执行不可恢复的清空 |
+从 Git 仓库目录调用时，必须给两个 Python 脚本传入仓库外的 `--state-dir "/absolute/workspace/work/daily-cleanup"`，避免修改项目或把本机记录提交出去。
 
-> 详细白名单与每个目录的安全说明见 `references/safety-and-scope.md`。
+## 周期执行与通知
 
-## 定时任务（可选，用户要求「定时自动清理」时）
+用户要求每小时运行时，使用宿主提供的心跳/自动化机制；先查已有任务，避免重复。保存对象、范围和静默通知约定；不要在本机另装 launchd、cron 或任务计划。发布/升级 Skill 不改变已有调度或活跃自动化源代码。
 
-安装每周任务（默认只生成 dry-run 报告）：
-- macOS / Linux：`bash "scripts/schedule.sh" --install`
-- Windows：`powershell -ExecutionPolicy Bypass -File "scripts/schedule.ps1" -Install`
+每次读取增量记录和已通知结果，避免完整重扫与重复提醒。无可处理内容、无新增重要重复组且无新故障时保持安静；只通知实际清理、新的重要重复、故障或用户需处理事项，持续未变的阻碍不重复提醒。用户询问状态时如实给出记录与覆盖范围。
 
-确认需要无人值守清理后，再显式加入 `--apply` / `-Apply`。
+## 禁止事项
 
-查看/卸载：
-- macOS / Linux：`bash "scripts/schedule.sh" --status` / `--uninstall`
-- Windows：`... schedule.ps1 -Status` / `-Uninstall`
+- 无整脚本 `--apply`，无目录级批量清理；不降低 14 天门槛。
+- 不移动个人文档、下载、桌面、照片、视频、项目、Git 仓库、应用或配置。
+- 不处理数据库、登录状态、离线内容、下载中的文件、使用中文件、符号链接及其目标。
+- 不永久删除、不清空废纸篓、不用 `rm -rf`、包管理器 purge/clean 或权限绕过。
+- 不上传本机内容、路径清单、哈希记录或恢复记录；只发布 Skill 源码。
+- 本版本仅支持 macOS；Linux/Windows 和旧调度入口明确拒绝执行，不自行迁移系统任务。
 
-> 定时任务默认每周日 03:00 运行，日志写入 `logs/cleanup.log`。安装前先向用户说明它会在无人值守时按白名单+年龄过滤清理，并请用户确认。
+## 验证
 
-## 参数速查（cleanup.sh / cleanup.ps1 通用语义）
-
-| 参数 | 作用 |
-|---|---|
-| （默认） | dry-run：只报告，不删除 |
-| `--apply` / `-Apply` | 真正清理（移入废纸篓/回收站） |
-| `--min-age-days N` / `-MinAgeDays N` | 年龄阈值，默认 7 天 |
-| `--category a,b,c` / `-Category a,b,c` | 只跑指定类别 |
-| `--with a,b` / `-With a,b` | 额外启用默认关闭的类别 |
-
-## 异常处理
-
-- 脚本报权限不足 → 逐项说明哪些目录需要权限，绝不自动 `sudo`（除非用户明确要求并说明原因）。
-- 清理工具（`trash`/`gio`/`trash-cli`）均不存在且无安全回退 → **跳过实际删除，只报告**，绝不降级为永久删除。
-- 用户只说「电脑卡」没说要删东西 → 先跑 dry-run 报告，不要直接删。
+`bash scripts/check.sh` 仅跑临时目录安全测试与插件入口测试，不执行真实用户清理。单次真实运行仍须报告检查限制；测试通过不代表任意缓存都可清理。
