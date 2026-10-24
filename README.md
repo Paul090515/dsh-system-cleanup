@@ -1,6 +1,6 @@
 # system-cleanup · Mac 安全清理 Skill
 
-将经过实际使用的“旧诊断日志逐文件移入废纸篓 + 只读增量查重”封装成可复用 Skill，保留 DSH 插件入口，也可用于 Codex。当前版本 **2.0.0，仅 macOS / Python 3.9+**。
+将经过实际使用的“旧诊断日志逐文件移入废纸篓 + 只读增量查重”封装成可复用 Skill，保留 DSH 插件入口，也可用于 Codex。当前版本 **2.0.1，仅 macOS / Python 3.9+**。
 
 ## 边界
 
@@ -21,6 +21,20 @@ git clone https://github.com/Paul090515/dsh-system-cleanup.git ~/.codex/skills/s
 ```
 
 DSH 可使用 `~/.dsh/skills/system-cleanup`，也保留 `lib/index.js` 和 `cordis.patch.yml` 插件接口。本次更新只发布到 GitHub，不代表 npm 已发布新版本。
+
+### ZIP 下载与自动更新
+
+- [下载 GitHub main 最新源码 ZIP](https://github.com/Paul090515/dsh-system-cleanup/archive/refs/heads/main.zip)。解压后将顶层文件夹改名为 `system-cleanup`，放进尚不存在的 Skill 目录；不要覆盖已有本地修改。
+- 每次推送 main、提交 PR 或手动触发时，[GitHub Actions](https://github.com/Paul090515/dsh-system-cleanup/actions/workflows/skill-package.yml) 自动运行隔离测试，再生成含 `system-cleanup/` 顶层目录的 ZIP。Actions 下载产物保留 30 天，下载通常需要登录 GitHub。
+- 已通过 Git 安装且没有本地改动时，可在 Skill 目录运行 `git pull --ff-only` 更新。GitHub 下载和测试自动化不会自行修改本机安装、扫描记录或每小时清理任务。
+
+本地从**已提交且无未提交修改**的源码构建同一格式的下载包：
+
+```bash
+bash scripts/package.sh
+```
+
+输出 `dist/system-cleanup-v2.0.1.zip`。只打包明确列出的已提交源码，不包含 `.git`、本机扫描/恢复记录、凭据或未跟踪文件。
 
 ## 使用
 

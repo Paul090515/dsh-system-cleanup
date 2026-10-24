@@ -21,3 +21,6 @@ duplicates-state.json
 duplicates-report.json
 __pycache__/
 *.py[cod]
+
+# Generated download packages.
+dist/

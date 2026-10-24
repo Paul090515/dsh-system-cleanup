@@ -3,6 +3,7 @@ set -eu
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bash -n "$root/scripts/cleanup.sh"
 bash -n "$root/scripts/schedule.sh"
+bash -n "$root/scripts/package.sh"
 node --check "$root/lib/index.js"
 test -f "$root/tests/test_safe_cleanup.py"
 test -f "$root/tests/test_duplicates_scan.py"

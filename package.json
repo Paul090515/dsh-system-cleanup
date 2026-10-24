@@ -1,11 +1,12 @@
 {
   "name": "dsh-system-cleanup",
   "description": "macOS skill: exact-manifest old diagnostic log cleanup and read-only incremental duplicate checks, Trash only.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
-    "check": "bash scripts/check.sh"
+    "check": "bash scripts/check.sh",
+    "package:zip": "bash scripts/package.sh"
   },
   "license": "MIT",
   "repository": {
