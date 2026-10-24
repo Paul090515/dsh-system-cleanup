@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -eu
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 bash -n "$root/scripts/cleanup.sh"
 bash -n "$root/scripts/schedule.sh"
 bash -n "$root/scripts/package.sh"
